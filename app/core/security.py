@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 from app.models.user import User
-from app.auth.jwt_handler import SECRET_KEY, ALGORITHM
+from app.core.config import settings
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/users/login"
@@ -25,8 +25,8 @@ def get_current_user(
     try:
         payload = jwt.decode(
             token,
-            SECRET_KEY,
-            algorithms=[ALGORITHM],
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
         )
 
         email = payload.get("sub")
@@ -37,7 +37,9 @@ def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(
+        User.email == email
+    ).first()
 
     if user is None:
         raise credentials_exception
