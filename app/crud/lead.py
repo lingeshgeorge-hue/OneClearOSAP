@@ -14,8 +14,17 @@ def create_lead(db: Session, lead: LeadCreate):
     return db_lead
 
 
-def get_all_leads(db: Session):
-    return db.query(Lead).all()
+def get_all_leads(
+    db: Session,
+    current_user
+):
+
+    if current_user.role == "Admin":
+        return db.query(Lead).all()
+
+    return db.query(Lead).filter(
+        Lead.assigned_to == current_user.id
+    ).all()
 
 
 def get_lead_by_id(db: Session, lead_id: int):

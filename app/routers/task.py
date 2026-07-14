@@ -39,7 +39,7 @@ def create_new_task(
     current_user: User = Depends(
         RoleChecker([
             Roles.ADMIN,
-            Roles.SALES,
+            Roles.MANAGER,
         ])
     ),
 ):
@@ -96,7 +96,7 @@ def edit_task(
     current_user: User = Depends(
         RoleChecker([
             Roles.ADMIN,
-            Roles.SALES,
+            Roles.MANAGER,
         ])
     ),
 ):

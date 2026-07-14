@@ -38,7 +38,7 @@ def create_new_contact(
     current_user: User = Depends(
         RoleChecker([
             Roles.ADMIN,
-            Roles.SALES,
+            Roles.MANAGER,
         ])
     ),
 ):
@@ -95,7 +95,7 @@ def edit_contact(
     current_user: User = Depends(
         RoleChecker([
             Roles.ADMIN,
-            Roles.SALES,
+            Roles.MANAGER,
         ])
     ),
 ):

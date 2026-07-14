@@ -1,17 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+
 from app.database.database import get_db
-from app.models.user import User
-from app.models.lead import Lead
 
 from app.schemas.lead import (
     LeadCreate,
     LeadUpdate,
     LeadResponse,
 )
-
-from app.schemas.assignment import AssignRequest
 
 from app.crud.lead import (
     create_lead,
@@ -20,10 +17,16 @@ from app.crud.lead import (
     update_lead,
     delete_lead,
 )
-
+from app.models.lead import Lead
+from app.models.user import User
 from app.core.security import get_current_user
 from app.core.permissions import RoleChecker
 from app.core.roles import Roles
+
+from app.schemas.assignment import AssignRequest
+from app.models.user import User
+from app.core.permissions import RoleChecker
+
 
 router = APIRouter(
     prefix="/leads",
@@ -39,57 +42,58 @@ def create_new_lead(
     lead: LeadCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        RoleChecker([Roles.ADMIN, Roles.MANAGER])
+        RoleChecker([
+    Roles.ADMIN,
+    Roles.MANAGER
+])
     ),
 ):
     return create_lead(db, lead)
 
 
-@router.get("/")
+@router.get(
+    "/",
+    response_model=list[LeadResponse]
+)
 def read_all_leads(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    leads = get_all_leads(
-    db,
-    current_user
-)
+    try:
+        print("=" * 50)
+        print("GET LEADS CALLED")
+        print("CURRENT USER:", current_user.email)
+        print("CURRENT ROLE:", current_user.role)
 
-    result = []
+        leads = get_all_leads(db)
 
-    for lead in leads:
-        result.append({
-    "id": lead.id,
-    "clinic_name": lead.clinic_name,
-    "contact_name": lead.contact_name,
-    "email": lead.email,
-    "phone": lead.phone,
-    "specialty": lead.specialty,
-    "state": lead.state,
-    "source": lead.source,
-    "status": lead.status,
-    "priority": lead.priority,
-    "assigned_to": lead.assigned_to,
-    "notes": lead.notes,
-    "next_followup": lead.next_followup,
-    "created_at": lead.created_at
-})
+        print("LEADS FOUND:", len(leads))
 
-    return result
+        return leads
+
+    except Exception as e:
+        print("GET LEADS ERROR:", type(e).__name__)
+        print("ERROR MESSAGE:", str(e))
+        raise
+    try:
+        leads = get_all_leads(db)
+        print("LEADS FOUND:", leads)
+        return leads
+    except Exception as e:
+        print("GET LEADS ERROR:", repr(e))
+        raise
+
 
 @router.get(
     "/{lead_id}",
+    response_model=LeadResponse
 )
 def read_lead(
     lead_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    print("CURRENT USER:", current_user.id, current_user.role)
-
     lead = get_lead_by_id(db, lead_id)
-
-    print("LEAD:", lead)
 
     if not lead:
         raise HTTPException(
@@ -97,22 +101,7 @@ def read_lead(
             detail="Lead not found"
         )
 
-    return {
-    "id": lead.id,
-    "clinic_name": lead.clinic_name,
-    "contact_name": lead.contact_name,
-    "email": lead.email,
-    "phone": lead.phone,
-    "specialty": lead.specialty,
-    "state": lead.state,
-    "source": lead.source,
-    "status": lead.status,
-    "priority": lead.priority,
-    "assigned_to": lead.assigned_to,
-    "notes": lead.notes,
-    "next_followup": lead.next_followup,
-    "created_at": lead.created_at
-}
+    return lead
 
 
 @router.put(
@@ -124,7 +113,10 @@ def edit_lead(
     lead: LeadUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        RoleChecker([Roles.ADMIN, Roles.MANAGER])
+        RoleChecker([
+    Roles.ADMIN,
+    Roles.MANAGER
+])
     ),
 ):
     updated = update_lead(
@@ -149,10 +141,15 @@ def remove_lead(
     lead_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        RoleChecker([Roles.ADMIN])
+        RoleChecker([
+            Roles.ADMIN
+        ])
     ),
 ):
-    deleted = delete_lead(db, lead_id)
+    deleted = delete_lead(
+        db,
+        lead_id
+    )
 
     if not deleted:
         raise HTTPException(
@@ -164,17 +161,17 @@ def remove_lead(
         "message": "Lead deleted successfully"
     }
 
-
-@router.put(
-    "/{lead_id}/assign"
-)
+@router.put("/{lead_id}/assign")
 def assign_lead(
     lead_id: int,
     assignment: AssignRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        RoleChecker([Roles.ADMIN, Roles.MANAGER])
-    ),
+    RoleChecker([
+        Roles.ADMIN,
+        Roles.MANAGER
+    ])
+),
 ):
     lead = db.query(Lead).filter(
         Lead.id == lead_id
@@ -196,7 +193,7 @@ def assign_lead(
             detail="User not found"
         )
 
-    lead.assigned_to = user.id
+    lead.assigned_to = assignment.user_id
 
     db.commit()
     db.refresh(lead)
@@ -204,6 +201,32 @@ def assign_lead(
     return {
         "message": "Lead assigned successfully",
         "lead_id": lead.id,
-        "assigned_user_id": user.id,
-        "assigned_to": user.full_name
+        "assigned_to": user.full_name,
+        "assigned_user_id": user.id
     }
+
+@router.get("/")
+def get_leads(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role in ["Admin", "Manager"]:
+        return db.query(Lead).all()
+
+    return db.query(Lead).filter(
+        Lead.assigned_to == current_user.id
+    ).all()
+
+@router.get("/")
+def get_leads(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+    RoleChecker(["admin", "manager", "agent"])
+),
+):
+    if current_user.role in ["admin", "manager"]:
+        return db.query(Lead).all()
+
+    return db.query(Lead).filter(
+        Lead.assigned_to == current_user.id
+    ).all()
