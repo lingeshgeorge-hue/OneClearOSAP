@@ -20,6 +20,9 @@ from app.routers import opportunity
 from app.models.opportunity import Opportunity
 from app.models.proposal import Proposal
 from app.routers import proposal
+from app.models.client import Client
+from app.routers import client
+
 
 app = FastAPI(
     title="OneClear OSAP",
@@ -68,3 +71,4 @@ app.include_router(task_router)
 app.include_router(activity_router)
 app.include_router(opportunity.router)
 app.include_router(proposal.router)
+app.include_router(client.router)
