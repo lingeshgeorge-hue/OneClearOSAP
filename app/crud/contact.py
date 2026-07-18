@@ -5,14 +5,25 @@ from app.models.lead import Lead
 from app.schemas.contact import ContactCreate, ContactUpdate
 
 
-def create_contact(db: Session, contact: ContactCreate):
-    # Verify the lead exists
-    lead = db.query(Lead).filter(Lead.id == contact.lead_id).first()
+def create_contact(
+    db: Session,
+    contact: ContactCreate,
+    user_id: int
+):
+    # Verify Lead Exists
+    lead = db.query(Lead).filter(
+        Lead.id == contact.lead_id
+    ).first()
 
     if not lead:
         return None
 
-    db_contact = Contact(**contact.model_dump())
+    contact_data = contact.model_dump()
+
+    # Auto assign contact creator
+    contact_data["assigned_to"] = user_id
+
+    db_contact = Contact(**contact_data)
 
     db.add(db_contact)
     db.commit()
@@ -25,8 +36,37 @@ def get_all_contacts(db: Session):
     return db.query(Contact).all()
 
 
-def get_contact_by_id(db: Session, contact_id: int):
-    return db.query(Contact).filter(Contact.id == contact_id).first()
+def get_contacts_by_assignee(
+    db: Session,
+    user_id: int
+):
+    return (
+        db.query(Contact)
+        .filter(Contact.assigned_to == user_id)
+        .all()
+    )
+
+
+def get_contacts_by_lead(
+    db: Session,
+    lead_id: int
+):
+    return (
+        db.query(Contact)
+        .filter(Contact.lead_id == lead_id)
+        .all()
+    )
+
+
+def get_contact_by_id(
+    db: Session,
+    contact_id: int
+):
+    return (
+        db.query(Contact)
+        .filter(Contact.id == contact_id)
+        .first()
+    )
 
 
 def update_contact(
@@ -34,12 +74,17 @@ def update_contact(
     contact_id: int,
     contact: ContactUpdate,
 ):
-    db_contact = get_contact_by_id(db, contact_id)
+    db_contact = get_contact_by_id(
+        db,
+        contact_id
+    )
 
     if not db_contact:
         return None
 
-    update_data = contact.model_dump(exclude_unset=True)
+    update_data = contact.model_dump(
+        exclude_unset=True
+    )
 
     for key, value in update_data.items():
         setattr(db_contact, key, value)
@@ -54,7 +99,10 @@ def delete_contact(
     db: Session,
     contact_id: int,
 ):
-    db_contact = get_contact_by_id(db, contact_id)
+    db_contact = get_contact_by_id(
+        db,
+        contact_id
+    )
 
     if not db_contact:
         return None

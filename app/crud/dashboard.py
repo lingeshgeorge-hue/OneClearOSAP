@@ -1,45 +1,70 @@
-from datetime import datetime, date
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from app.models.lead import Lead
+from app.models.contact import Contact
+from app.models.opportunity import Opportunity
+from app.models.proposal import Proposal
+from app.models.client import Client
 
 
-def get_dashboard_metrics(db: Session):
-
+def get_dashboard_data(db: Session):
     total_leads = db.query(Lead).count()
 
-    new_leads = db.query(Lead).filter(
-        Lead.status == "New"
+    total_contacts = db.query(Contact).count()
+
+    total_opportunities = db.query(
+        Opportunity
     ).count()
 
-    contacted_leads = db.query(Lead).filter(
-        Lead.status == "Contacted"
+    total_proposals = db.query(
+        Proposal
     ).count()
 
-    qualified_leads = db.query(Lead).filter(
-        Lead.status == "Qualified"
+    total_clients = db.query(
+        Client
     ).count()
 
-    high_priority_leads = db.query(Lead).filter(
-        Lead.priority == "HIGH"
-    ).count()
+    pipeline_value = (
+        db.query(
+            func.sum(
+                Opportunity.estimated_value
+            )
+        ).scalar() or 0
+    )
 
-    followups_due_today = db.query(Lead).filter(
-        Lead.next_followup.isnot(None),
-        func.date(Lead.next_followup) <= date.today()
-    ).count()
+    active_clients = (
+        db.query(Client)
+        .filter(
+            Client.status == "Active"
+        )
+        .count()
+    )
 
-    assigned_leads = db.query(Lead).filter(
-        Lead.assigned_to.isnot(None)
-    ).count()
+    onboarding_clients = (
+        db.query(Client)
+        .filter(
+            Client.status == "Onboarding"
+        )
+        .count()
+    )
+
+    monthly_revenue = (
+        db.query(
+            func.sum(
+                Client.monthly_revenue
+            )
+        ).scalar() or 0
+    )
 
     return {
         "total_leads": total_leads,
-        "new_leads": new_leads,
-        "contacted_leads": contacted_leads,
-        "qualified_leads": qualified_leads,
-        "high_priority_leads": high_priority_leads,
-        "followups_due_today": followups_due_today,
-        "assigned_leads": assigned_leads
+        "total_contacts": total_contacts,
+        "total_opportunities": total_opportunities,
+        "total_proposals": total_proposals,
+        "total_clients": total_clients,
+        "pipeline_value": pipeline_value,
+        "active_clients": active_clients,
+        "onboarding_clients": onboarding_clients,
+        "monthly_revenue": monthly_revenue
     }

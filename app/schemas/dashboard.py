@@ -3,9 +3,12 @@ from pydantic import BaseModel
 
 class DashboardResponse(BaseModel):
     total_leads: int
-    new_leads: int
-    contacted_leads: int
-    qualified_leads: int
-    high_priority_leads: int
-    followups_due_today: int
-    assigned_leads: int
+    total_contacts: int
+    total_opportunities: int
+    total_proposals: int
+    total_clients: int
+
+    pipeline_value: float
+    active_clients: int
+    onboarding_clients: int
+    monthly_revenue: float

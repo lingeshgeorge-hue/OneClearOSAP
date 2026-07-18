@@ -12,6 +12,8 @@ from app.schemas.contact import (
 from app.crud.contact import (
     create_contact,
     get_all_contacts,
+    get_contacts_by_assignee,
+    get_contacts_by_lead,
     get_contact_by_id,
     update_contact,
     delete_contact,
@@ -42,7 +44,11 @@ def create_new_contact(
         ])
     ),
 ):
-    new_contact = create_contact(db, contact)
+    new_contact = create_contact(
+        db,
+        contact,
+        current_user.id,
+    )
 
     if not new_contact:
         raise HTTPException(
@@ -61,7 +67,31 @@ def read_all_contacts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return get_all_contacts(db)
+    if current_user.role in [
+        Roles.ADMIN,
+        Roles.MANAGER,
+    ]:
+        return get_all_contacts(db)
+
+    return get_contacts_by_assignee(
+        db,
+        current_user.id,
+    )
+
+
+@router.get(
+    "/lead/{lead_id}",
+    response_model=list[ContactResponse]
+)
+def read_contacts_by_lead(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return get_contacts_by_lead(
+        db,
+        lead_id,
+    )
 
 
 @router.get(
@@ -73,7 +103,10 @@ def read_contact(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    contact = get_contact_by_id(db, contact_id)
+    contact = get_contact_by_id(
+        db,
+        contact_id,
+    )
 
     if not contact:
         raise HTTPException(

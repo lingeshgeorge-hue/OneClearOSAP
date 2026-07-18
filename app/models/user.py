@@ -4,6 +4,8 @@ from app.database.database import Base
 
 from sqlalchemy import Column, String
 
+from sqlalchemy.orm import relationship, Session
+
 
 class User(Base):
     __tablename__ = "users"
@@ -20,6 +22,11 @@ class User(Base):
     String,
     nullable=False,
     default="agent"
+)
+    
+    contacts = relationship(
+    "Contact",
+    back_populates="assigned_user"
 )
     
     role = Column(String, nullable=False, default="agent")

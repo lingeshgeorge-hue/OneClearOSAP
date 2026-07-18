@@ -34,7 +34,19 @@ class Contact(Base):
         default=datetime.utcnow
     )
 
+    assigned_to = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=True
+    )
+
     lead = relationship(
-    "Lead",
-    back_populates="contacts"
-)
+        "Lead",
+        back_populates="contacts"
+    )
+
+    assigned_user = relationship(
+        "User",
+        back_populates="contacts",
+        foreign_keys=[assigned_to]
+    )
