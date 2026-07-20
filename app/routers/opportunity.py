@@ -1,48 +1,175 @@
-from fastapi import APIRouter, Depends
-print("Opportunity router loaded")
-
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
 
 from app.database.database import get_db
+
 from app.schemas.opportunity import (
     OpportunityCreate,
-    OpportunityResponse
+    OpportunityUpdate,
+    OpportunityResponse,
 )
-from app.crud import opportunity as crud
+
+from app.crud.opportunity import (
+    create_opportunity,
+    get_opportunities,
+    get_opportunities_by_assignee,
+    get_opportunities_by_lead,
+    get_opportunity,
+    update_opportunity,
+    delete_opportunity,
+)
+
+from app.models.user import User
+from app.core.security import get_current_user
+from app.core.permissions import RoleChecker
+from app.core.roles import Roles
 
 router = APIRouter(
     prefix="/opportunities",
-    tags=["Opportunities"]
+    tags=["Opportunities"],
 )
 
 
 @router.post(
     "/",
-    response_model=OpportunityResponse
+    response_model=OpportunityResponse,
 )
-def create_opportunity(
+def create_new_opportunity(
     opportunity: OpportunityCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        RoleChecker([
+            Roles.ADMIN,
+            Roles.MANAGER,
+        ])
+    ),
 ):
-    return crud.create_opportunity(db, opportunity)
+    new_opportunity = create_opportunity(
+        db,
+        opportunity,
+        current_user.id,
+    )
+
+    if not new_opportunity:
+        raise HTTPException(
+            status_code=404,
+            detail="Lead not found",
+        )
+
+    return new_opportunity
 
 
 @router.get(
     "/",
-    response_model=List[OpportunityResponse]
+    response_model=list[OpportunityResponse],
 )
-def get_opportunities(
-    db: Session = Depends(get_db)
+def read_all_opportunities(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    return crud.get_opportunities(db)
+    if current_user.role in [
+        Roles.ADMIN,
+        Roles.MANAGER,
+    ]:
+        return get_opportunities(db)
+
+    return get_opportunities_by_assignee(
+        db,
+        current_user.id,
+    )
 
 
-@router.get("/{opportunity_id}", response_model=OpportunityResponse)
-def get_opportunity(opportunity_id: int, db: Session = Depends(get_db)):
-    return crud.get_opportunity(db, opportunity_id)
+@router.get(
+    "/lead/{lead_id}",
+    response_model=list[OpportunityResponse],
+)
+def read_opportunities_by_lead(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return get_opportunities_by_lead(
+        db,
+        lead_id,
+    )
 
 
-@router.delete("/{opportunity_id}")
-def delete_opportunity(opportunity_id: int, db: Session = Depends(get_db)):
-    return crud.delete_opportunity(db, opportunity_id)
+@router.get(
+    "/{opportunity_id}",
+    response_model=OpportunityResponse,
+)
+def read_opportunity(
+    opportunity_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    opportunity = get_opportunity(
+        db,
+        opportunity_id,
+    )
+
+    if not opportunity:
+        raise HTTPException(
+            status_code=404,
+            detail="Opportunity not found",
+        )
+
+    return opportunity
+
+
+@router.put(
+    "/{opportunity_id}",
+    response_model=OpportunityResponse,
+)
+def edit_opportunity(
+    opportunity_id: int,
+    opportunity: OpportunityUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        RoleChecker([
+            Roles.ADMIN,
+            Roles.MANAGER,
+        ])
+    ),
+):
+    updated = update_opportunity(
+        db,
+        opportunity_id,
+        opportunity,
+    )
+
+    if not updated:
+        raise HTTPException(
+            status_code=404,
+            detail="Opportunity not found",
+        )
+
+    return updated
+
+
+@router.delete(
+    "/{opportunity_id}",
+)
+def remove_opportunity(
+    opportunity_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        RoleChecker([
+            Roles.ADMIN,
+        ])
+    ),
+):
+    deleted = delete_opportunity(
+        db,
+        opportunity_id,
+    )
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="Opportunity not found",
+        )
+
+    return {
+        "message": "Opportunity deleted successfully"
+    }

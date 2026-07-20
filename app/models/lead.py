@@ -67,3 +67,9 @@ class Lead(Base):
     back_populates="lead",
     cascade="all, delete-orphan"
 )
+    
+    opportunities = relationship(
+    "Opportunity",
+    back_populates="lead",
+    cascade="all, delete-orphan"
+)

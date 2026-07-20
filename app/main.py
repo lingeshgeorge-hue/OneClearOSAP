@@ -22,7 +22,8 @@ from app.models.proposal import Proposal
 from app.routers import proposal
 from app.models.client import Client
 from app.routers import client
-
+from app.routers.proposal import router as proposal_router
+from app.routers.client import router as client_router
 
 app = FastAPI(
     title="OneClear OSAP",

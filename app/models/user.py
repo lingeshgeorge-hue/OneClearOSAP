@@ -1,10 +1,7 @@
 from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import relationship
 
 from app.database.database import Base
-
-from sqlalchemy import Column, String
-
-from sqlalchemy.orm import relationship, Session
 
 
 class User(Base):
@@ -19,14 +16,20 @@ class User(Base):
     hashed_password = Column(String)
 
     role = Column(
-    String,
-    nullable=False,
-    default="agent"
-)
-    
+        String,
+        nullable=False,
+        default="agent"
+    )
+
+    # Assigned Contacts
     contacts = relationship(
-    "Contact",
-    back_populates="assigned_user"
-)
-    
-    role = Column(String, nullable=False, default="agent")
+        "Contact",
+        back_populates="assigned_user",
+        foreign_keys="Contact.assigned_to"
+    )
+
+    # Assigned Opportunities
+    opportunities = relationship(
+        "Opportunity",
+        back_populates="owner"
+    )

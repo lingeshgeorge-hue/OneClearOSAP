@@ -3,5 +3,7 @@ from .clinic import Clinic
 from .lead import Lead
 from .contact import Contact
 from .task import Task
-from app.models.activity import Activity
-from app.models.opportunity import Opportunity
+from .activity import Activity
+from .opportunity import Opportunity
+from .proposal import Proposal
+from .client import Client
