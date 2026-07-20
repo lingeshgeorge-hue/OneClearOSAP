@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.client import Client
 from app.models.proposal import Proposal
 from app.models.opportunity import Opportunity
-from app.models.lead import Lead
+from app.models.lead import Lead, LeadStatus
 
 from app.schemas.client import (
     ClientCreate,
@@ -13,6 +13,8 @@ from app.schemas.client import (
 from app.services.client_service import (
     get_proposal_or_none,
 )
+
+from app.core.proposal_status import ProposalStatus
 
 
 def create_client(
@@ -41,11 +43,16 @@ def create_client(
         **client_data
     )
 
-    db.add(db_client)
-    db.commit()
-    db.refresh(db_client)
+    try:
+        db.add(db_client)
+        db.commit()
+        db.refresh(db_client)
 
-    return db_client
+        return db_client
+
+    except Exception:
+        db.rollback()
+        raise
 
 
 def create_client_from_proposal(
@@ -54,9 +61,9 @@ def create_client_from_proposal(
     user_id: int,
 ):
     """
-    Automatically create a Client from a Proposal.
+    Automatically convert a Proposal into a Client.
 
-    Workflow:
+    Lifecycle:
 
     Proposal
         ↓
@@ -65,6 +72,15 @@ def create_client_from_proposal(
     Lead
         ↓
     Client
+
+    On successful conversion:
+
+    Lead        -> WON
+    Opportunity -> Won
+    Proposal    -> Accepted
+    Client      -> ACTIVE
+
+    All lifecycle changes are committed together.
 
     Returns:
 
@@ -149,21 +165,23 @@ def create_client_from_proposal(
         )
 
     # -------------------------------------------------
-    # 5. Determine client name
+    # 5. Determine Client data
     # -------------------------------------------------
 
     client_name = lead.clinic_name
-
-    # -------------------------------------------------
-    # 6. Determine monthly revenue
-    # -------------------------------------------------
 
     monthly_revenue = (
         proposal.monthly_revenue or 0
     )
 
+    account_manager_id = (
+        proposal.assigned_to
+        if proposal.assigned_to is not None
+        else user_id
+    )
+
     # -------------------------------------------------
-    # 7. Create Client
+    # 6. Prepare Client
     # -------------------------------------------------
 
     db_client = Client(
@@ -175,11 +193,7 @@ def create_client_from_proposal(
 
         proposal_id=proposal.id,
 
-        account_manager_id=(
-            proposal.assigned_to
-            if proposal.assigned_to is not None
-            else user_id
-        ),
+        account_manager_id=account_manager_id,
 
         pricing_model=proposal.pricing_model,
 
@@ -193,16 +207,48 @@ def create_client_from_proposal(
         ),
     )
 
-    db.add(db_client)
+    try:
 
-    db.commit()
+        # -------------------------------------------------
+        # 7. Add Client
+        # -------------------------------------------------
 
-    db.refresh(db_client)
+        db.add(db_client)
 
-    return (
-        "success",
-        db_client,
-    )
+        # -------------------------------------------------
+        # 8. Lifecycle synchronization
+        # -------------------------------------------------
+
+        lead.status = LeadStatus.WON
+
+        opportunity.stage = "Won"
+        opportunity.probability = 100
+
+        proposal.status = (
+            ProposalStatus.ACCEPTED.value
+        )
+
+        # -------------------------------------------------
+        # 9. Commit ALL changes together
+        # -------------------------------------------------
+
+        db.commit()
+
+        db.refresh(db_client)
+        db.refresh(lead)
+        db.refresh(opportunity)
+        db.refresh(proposal)
+
+        return (
+            "success",
+            db_client,
+        )
+
+    except Exception:
+
+        db.rollback()
+
+        raise
 
 
 def get_all_clients(
@@ -226,8 +272,8 @@ def get_clients_by_manager(
     user_id: int,
 ):
     """
-    Return only clients assigned
-    to a specific account manager.
+    Return clients assigned to
+    a specific account manager.
     """
 
     return (
@@ -289,11 +335,19 @@ def update_client(
             value,
         )
 
-    db.commit()
+    try:
 
-    db.refresh(db_client)
+        db.commit()
 
-    return db_client
+        db.refresh(db_client)
+
+        return db_client
+
+    except Exception:
+
+        db.rollback()
+
+        raise
 
 
 def delete_client(
@@ -312,8 +366,16 @@ def delete_client(
     if not db_client:
         return None
 
-    db.delete(db_client)
+    try:
 
-    db.commit()
+        db.delete(db_client)
 
-    return db_client
+        db.commit()
+
+        return db_client
+
+    except Exception:
+
+        db.rollback()
+
+        raise

@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
 
 from app.models.proposal import Proposal
+from app.models.lead import Lead, LeadStatus
+
 from app.schemas.proposal import (
     ProposalCreate,
     ProposalUpdate,
@@ -13,14 +15,56 @@ from app.services.proposal_service import (
 )
 
 
+def _move_lead_to_proposal_sent(
+    db: Session,
+    lead_id: int,
+):
+    """
+    Move the linked Lead to PROPOSAL_SENT.
+
+    WON and LOST are terminal states and must
+    never be moved backwards.
+    """
+
+    lead = (
+        db.query(Lead)
+        .filter(
+            Lead.id == lead_id
+        )
+        .first()
+    )
+
+    if not lead:
+        return None
+
+    if lead.status not in [
+        LeadStatus.WON,
+        LeadStatus.LOST,
+    ]:
+        lead.status = LeadStatus.PROPOSAL_SENT
+
+    return lead
+
+
 def create_proposal_from_opportunity(
     db: Session,
     opportunity_id: int,
     user_id: int,
 ):
     """
-    Generate a new proposal directly from an existing opportunity.
+    Generate a Proposal from an existing Opportunity.
+
+    Lifecycle automation:
+    Creating the Proposal automatically moves the
+    linked Lead to PROPOSAL_SENT.
+
+    Proposal creation and Lead status update are
+    committed in one database transaction.
     """
+
+    # -------------------------------------------------
+    # 1. Verify Opportunity exists
+    # -------------------------------------------------
 
     opportunity = get_opportunity_or_none(
         db,
@@ -29,6 +73,10 @@ def create_proposal_from_opportunity(
 
     if not opportunity:
         return None
+
+    # -------------------------------------------------
+    # 2. Prepare Proposal
+    # -------------------------------------------------
 
     proposal = Proposal(
         proposal_number=generate_proposal_number(db),
@@ -48,11 +96,39 @@ def create_proposal_from_opportunity(
         assigned_to=user_id,
     )
 
-    db.add(proposal)
-    db.commit()
-    db.refresh(proposal)
+    try:
 
-    return proposal
+        # -------------------------------------------------
+        # 3. Add Proposal
+        # -------------------------------------------------
+
+        db.add(proposal)
+
+        # -------------------------------------------------
+        # 4. Lifecycle automation
+        # Opportunity -> Lead -> PROPOSAL_SENT
+        # -------------------------------------------------
+
+        _move_lead_to_proposal_sent(
+            db,
+            opportunity.lead_id,
+        )
+
+        # -------------------------------------------------
+        # 5. Commit everything together
+        # -------------------------------------------------
+
+        db.commit()
+
+        db.refresh(proposal)
+
+        return proposal
+
+    except Exception:
+
+        db.rollback()
+
+        raise
 
 
 def create_proposal(
@@ -61,8 +137,15 @@ def create_proposal(
     user_id: int,
 ):
     """
-    Create a proposal manually.
+    Create a Proposal manually.
+
+    Manual Proposal creation also advances the linked
+    Lead to PROPOSAL_SENT.
     """
+
+    # -------------------------------------------------
+    # 1. Verify Opportunity exists
+    # -------------------------------------------------
 
     opportunity = get_opportunity_or_none(
         db,
@@ -72,10 +155,18 @@ def create_proposal(
     if not opportunity:
         return None
 
+    # -------------------------------------------------
+    # 2. Prepare Proposal data
+    # -------------------------------------------------
+
     proposal_data = proposal.model_dump()
 
     proposal_data["annual_revenue"] = (
-        proposal_data.get("monthly_revenue", 0) * 12
+        proposal_data.get(
+            "monthly_revenue",
+            0,
+        )
+        * 12
     )
 
     proposal_data["proposal_number"] = (
@@ -95,11 +186,38 @@ def create_proposal(
         **proposal_data
     )
 
-    db.add(db_proposal)
-    db.commit()
-    db.refresh(db_proposal)
+    try:
 
-    return db_proposal
+        # -------------------------------------------------
+        # 3. Add Proposal
+        # -------------------------------------------------
+
+        db.add(db_proposal)
+
+        # -------------------------------------------------
+        # 4. Lifecycle automation
+        # -------------------------------------------------
+
+        _move_lead_to_proposal_sent(
+            db,
+            opportunity.lead_id,
+        )
+
+        # -------------------------------------------------
+        # 5. Commit together
+        # -------------------------------------------------
+
+        db.commit()
+
+        db.refresh(db_proposal)
+
+        return db_proposal
+
+    except Exception:
+
+        db.rollback()
+
+        raise
 
 
 def get_all_proposals(
@@ -107,7 +225,9 @@ def get_all_proposals(
 ):
     return (
         db.query(Proposal)
-        .order_by(Proposal.id.desc())
+        .order_by(
+            Proposal.id.desc()
+        )
         .all()
     )
 
@@ -121,7 +241,9 @@ def get_proposals_by_assignee(
         .filter(
             Proposal.assigned_to == user_id
         )
-        .order_by(Proposal.id.desc())
+        .order_by(
+            Proposal.id.desc()
+        )
         .all()
     )
 
@@ -144,6 +266,13 @@ def update_proposal(
     proposal_id: int,
     proposal: ProposalUpdate,
 ):
+    """
+    Update an existing Proposal.
+
+    Annual revenue is automatically recalculated
+    whenever monthly revenue changes.
+    """
+
     db_proposal = get_proposal(
         db,
         proposal_id,
@@ -157,6 +286,7 @@ def update_proposal(
     )
 
     for key, value in update_data.items():
+
         setattr(
             db_proposal,
             key,
@@ -165,15 +295,27 @@ def update_proposal(
 
     # Keep annual revenue synchronized whenever
     # monthly revenue changes.
+
     if "monthly_revenue" in update_data:
+
         db_proposal.annual_revenue = (
-            db_proposal.monthly_revenue * 12
+            db_proposal.monthly_revenue
+            * 12
         )
 
-    db.commit()
-    db.refresh(db_proposal)
+    try:
 
-    return db_proposal
+        db.commit()
+
+        db.refresh(db_proposal)
+
+        return db_proposal
+
+    except Exception:
+
+        db.rollback()
+
+        raise
 
 
 def delete_proposal(
@@ -188,7 +330,16 @@ def delete_proposal(
     if not db_proposal:
         return None
 
-    db.delete(db_proposal)
-    db.commit()
+    try:
 
-    return db_proposal
+        db.delete(db_proposal)
+
+        db.commit()
+
+        return db_proposal
+
+    except Exception:
+
+        db.rollback()
+
+        raise

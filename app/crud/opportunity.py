@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 
 from app.models.opportunity import Opportunity
-from app.models.lead import Lead
+from app.models.lead import Lead, LeadStatus
+
 from app.schemas.opportunity import (
     OpportunityCreate,
     OpportunityUpdate,
@@ -13,32 +14,94 @@ def create_opportunity(
     opportunity: OpportunityCreate,
     user_id: int,
 ):
-    # Verify Lead Exists
+    """
+    Create an Opportunity from an existing Lead.
+
+    Lifecycle automation:
+    When an Opportunity is successfully created,
+    the linked Lead automatically moves to QUALIFIED.
+
+    Opportunity creation and Lead status update
+    are committed in one transaction.
+    """
+
+    # -------------------------------------------------
+    # 1. Verify Lead exists
+    # -------------------------------------------------
+
     lead = (
         db.query(Lead)
-        .filter(Lead.id == opportunity.lead_id)
+        .filter(
+            Lead.id == opportunity.lead_id
+        )
         .first()
     )
 
     if not lead:
         return None
 
+    # -------------------------------------------------
+    # 2. Prepare Opportunity
+    # -------------------------------------------------
+
     opportunity_data = opportunity.model_dump()
 
-    # Automatically assign creator
+    # Automatically assign the Opportunity
+    # to the authenticated user creating it.
     opportunity_data["assigned_to"] = user_id
 
-    db_opportunity = Opportunity(**opportunity_data)
+    db_opportunity = Opportunity(
+        **opportunity_data
+    )
 
-    db.add(db_opportunity)
-    db.commit()
-    db.refresh(db_opportunity)
+    try:
 
-    return db_opportunity
+        # -------------------------------------------------
+        # 3. Create Opportunity
+        # -------------------------------------------------
+
+        db.add(db_opportunity)
+
+        # -------------------------------------------------
+        # 4. Lifecycle automation
+        #
+        # Do not move WON or LOST leads backwards.
+        # -------------------------------------------------
+
+        if lead.status not in [
+            LeadStatus.WON,
+            LeadStatus.LOST,
+        ]:
+            lead.status = LeadStatus.QUALIFIED
+
+        # -------------------------------------------------
+        # 5. Commit both changes together
+        # -------------------------------------------------
+
+        db.commit()
+
+        db.refresh(db_opportunity)
+        db.refresh(lead)
+
+        return db_opportunity
+
+    except Exception:
+
+        db.rollback()
+
+        raise
 
 
-def get_opportunities(db: Session):
-    return db.query(Opportunity).all()
+def get_opportunities(
+    db: Session,
+):
+    return (
+        db.query(Opportunity)
+        .order_by(
+            Opportunity.id.desc()
+        )
+        .all()
+    )
 
 
 def get_opportunities_by_assignee(
@@ -47,7 +110,12 @@ def get_opportunities_by_assignee(
 ):
     return (
         db.query(Opportunity)
-        .filter(Opportunity.assigned_to == user_id)
+        .filter(
+            Opportunity.assigned_to == user_id
+        )
+        .order_by(
+            Opportunity.id.desc()
+        )
         .all()
     )
 
@@ -58,7 +126,12 @@ def get_opportunities_by_lead(
 ):
     return (
         db.query(Opportunity)
-        .filter(Opportunity.lead_id == lead_id)
+        .filter(
+            Opportunity.lead_id == lead_id
+        )
+        .order_by(
+            Opportunity.id.desc()
+        )
         .all()
     )
 
@@ -69,7 +142,9 @@ def get_opportunity(
 ):
     return (
         db.query(Opportunity)
-        .filter(Opportunity.id == opportunity_id)
+        .filter(
+            Opportunity.id == opportunity_id
+        )
         .first()
     )
 
@@ -92,12 +167,26 @@ def update_opportunity(
     )
 
     for key, value in update_data.items():
-        setattr(db_opportunity, key, value)
 
-    db.commit()
-    db.refresh(db_opportunity)
+        setattr(
+            db_opportunity,
+            key,
+            value,
+        )
 
-    return db_opportunity
+    try:
+
+        db.commit()
+
+        db.refresh(db_opportunity)
+
+        return db_opportunity
+
+    except Exception:
+
+        db.rollback()
+
+        raise
 
 
 def delete_opportunity(
@@ -112,7 +201,16 @@ def delete_opportunity(
     if not db_opportunity:
         return None
 
-    db.delete(db_opportunity)
-    db.commit()
+    try:
 
-    return db_opportunity
+        db.delete(db_opportunity)
+
+        db.commit()
+
+        return db_opportunity
+
+    except Exception:
+
+        db.rollback()
+
+        raise
