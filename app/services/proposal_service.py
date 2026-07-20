@@ -10,22 +10,21 @@ def generate_proposal_number(
     db: Session,
 ) -> str:
     """
-    Generate the next unique proposal number.
+    Generate the next proposal number.
 
     Format:
     OCP-YYYY-0001
     OCP-YYYY-0002
-    OCP-YYYY-0003
 
-    Uses existing proposal numbers rather than row count,
-    preventing duplicates if proposals have been deleted.
+    Uses the highest existing sequence instead
+    of row count so deleted records do not cause
+    number reuse.
     """
 
     year = datetime.now().year
-
     prefix = f"OCP-{year}-"
 
-    existing_proposals = (
+    existing_numbers = (
         db.query(Proposal.proposal_number)
         .filter(
             Proposal.proposal_number.like(
@@ -37,9 +36,9 @@ def generate_proposal_number(
 
     highest_number = 0
 
-    for proposal in existing_proposals:
+    for row in existing_numbers:
 
-        proposal_number = proposal[0]
+        proposal_number = row[0]
 
         if not proposal_number:
             continue
@@ -49,18 +48,17 @@ def generate_proposal_number(
                 proposal_number.split("-")[-1]
             )
 
-            if sequence > highest_number:
-                highest_number = sequence
+            highest_number = max(
+                highest_number,
+                sequence,
+            )
 
         except (ValueError, IndexError):
             continue
 
     next_number = highest_number + 1
 
-    return (
-        f"{prefix}"
-        f"{next_number:04d}"
-    )
+    return f"{prefix}{next_number:04d}"
 
 
 def get_next_version(
@@ -69,7 +67,7 @@ def get_next_version(
 ) -> int:
     """
     Return the next proposal version
-    for a specific opportunity.
+    for an Opportunity.
     """
 
     latest = (
@@ -98,8 +96,7 @@ def get_opportunity_or_none(
     opportunity_id: int,
 ):
     """
-    Return an Opportunity if it exists,
-    otherwise return None.
+    Return an Opportunity if it exists.
     """
 
     return (
@@ -110,3 +107,50 @@ def get_opportunity_or_none(
         )
         .first()
     )
+
+
+def get_latest_proposal_for_opportunity(
+    db: Session,
+    opportunity_id: int,
+):
+    """
+    Return the latest Proposal associated
+    with an Opportunity.
+    """
+
+    return (
+        db.query(Proposal)
+        .filter(
+            Proposal.opportunity_id
+            == opportunity_id
+        )
+        .order_by(
+            Proposal.version.desc(),
+            Proposal.id.desc(),
+        )
+        .first()
+    )
+
+
+def proposal_exists_for_opportunity(
+    db: Session,
+    opportunity_id: int,
+) -> bool:
+    """
+    Check whether an Opportunity already
+    has at least one Proposal.
+
+    Used to prevent accidental duplicate
+    initial proposal generation.
+    """
+
+    existing = (
+        db.query(Proposal.id)
+        .filter(
+            Proposal.opportunity_id
+            == opportunity_id
+        )
+        .first()
+    )
+
+    return existing is not None

@@ -9,6 +9,12 @@ from app.schemas.opportunity import (
 )
 
 
+CLOSED_OPPORTUNITY_STAGES = [
+    "Won",
+    "Lost",
+]
+
+
 def create_opportunity(
     db: Session,
     opportunity: OpportunityCreate,
@@ -17,12 +23,18 @@ def create_opportunity(
     """
     Create an Opportunity from an existing Lead.
 
-    Lifecycle automation:
-    When an Opportunity is successfully created,
-    the linked Lead automatically moves to QUALIFIED.
+    Validation:
+    - Lead must exist.
+    - A Lead cannot have more than one active Opportunity.
 
-    Opportunity creation and Lead status update
-    are committed in one transaction.
+    Lifecycle:
+    - Creating an Opportunity moves the Lead to QUALIFIED.
+    - WON and LOST Leads are not moved backwards.
+
+    Returns:
+        ("success", opportunity)
+        ("lead_not_found", None)
+        ("active_opportunity_exists", existing_opportunity)
     """
 
     # -------------------------------------------------
@@ -38,17 +50,46 @@ def create_opportunity(
     )
 
     if not lead:
-        return None
+        return (
+            "lead_not_found",
+            None,
+        )
 
     # -------------------------------------------------
-    # 2. Prepare Opportunity
+    # 2. Prevent duplicate active Opportunity
     # -------------------------------------------------
 
-    opportunity_data = opportunity.model_dump()
+    existing_active_opportunity = (
+        db.query(Opportunity)
+        .filter(
+            Opportunity.lead_id
+            == opportunity.lead_id,
+            Opportunity.stage.notin_(
+                CLOSED_OPPORTUNITY_STAGES
+            ),
+        )
+        .first()
+    )
 
-    # Automatically assign the Opportunity
-    # to the authenticated user creating it.
-    opportunity_data["assigned_to"] = user_id
+    if existing_active_opportunity:
+        return (
+            "active_opportunity_exists",
+            existing_active_opportunity,
+        )
+
+    # -------------------------------------------------
+    # 3. Prepare Opportunity
+    # -------------------------------------------------
+
+    opportunity_data = (
+        opportunity.model_dump()
+    )
+
+    # Always assign authenticated creator.
+    # Do not trust assigned_to supplied by request.
+    opportunity_data["assigned_to"] = (
+        user_id
+    )
 
     db_opportunity = Opportunity(
         **opportunity_data
@@ -57,25 +98,25 @@ def create_opportunity(
     try:
 
         # -------------------------------------------------
-        # 3. Create Opportunity
+        # 4. Create Opportunity
         # -------------------------------------------------
 
         db.add(db_opportunity)
 
         # -------------------------------------------------
-        # 4. Lifecycle automation
-        #
-        # Do not move WON or LOST leads backwards.
+        # 5. Lifecycle automation
         # -------------------------------------------------
 
         if lead.status not in [
             LeadStatus.WON,
             LeadStatus.LOST,
         ]:
-            lead.status = LeadStatus.QUALIFIED
+            lead.status = (
+                LeadStatus.QUALIFIED
+            )
 
         # -------------------------------------------------
-        # 5. Commit both changes together
+        # 6. Commit both changes together
         # -------------------------------------------------
 
         db.commit()
@@ -83,7 +124,10 @@ def create_opportunity(
         db.refresh(db_opportunity)
         db.refresh(lead)
 
-        return db_opportunity
+        return (
+            "success",
+            db_opportunity,
+        )
 
     except Exception:
 
@@ -111,7 +155,8 @@ def get_opportunities_by_assignee(
     return (
         db.query(Opportunity)
         .filter(
-            Opportunity.assigned_to == user_id
+            Opportunity.assigned_to
+            == user_id
         )
         .order_by(
             Opportunity.id.desc()
@@ -127,7 +172,8 @@ def get_opportunities_by_lead(
     return (
         db.query(Opportunity)
         .filter(
-            Opportunity.lead_id == lead_id
+            Opportunity.lead_id
+            == lead_id
         )
         .order_by(
             Opportunity.id.desc()
@@ -143,7 +189,8 @@ def get_opportunity(
     return (
         db.query(Opportunity)
         .filter(
-            Opportunity.id == opportunity_id
+            Opportunity.id
+            == opportunity_id
         )
         .first()
     )
@@ -162,8 +209,10 @@ def update_opportunity(
     if not db_opportunity:
         return None
 
-    update_data = opportunity.model_dump(
-        exclude_unset=True
+    update_data = (
+        opportunity.model_dump(
+            exclude_unset=True
+        )
     )
 
     for key, value in update_data.items():

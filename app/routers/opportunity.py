@@ -1,4 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    status,
+)
+
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
@@ -20,15 +26,21 @@ from app.crud.opportunity import (
 )
 
 from app.models.user import User
+
 from app.core.security import get_current_user
 from app.core.permissions import RoleChecker
 from app.core.roles import Roles
+
 
 router = APIRouter(
     prefix="/opportunities",
     tags=["Opportunities"],
 )
 
+
+# ============================================================
+# CREATE OPPORTUNITY
+# ============================================================
 
 @router.post(
     "/",
@@ -44,20 +56,53 @@ def create_new_opportunity(
         ])
     ),
 ):
-    new_opportunity = create_opportunity(
-        db,
-        opportunity,
-        current_user.id,
+
+    result, new_opportunity = (
+        create_opportunity(
+            db,
+            opportunity,
+            current_user.id,
+        )
     )
 
-    if not new_opportunity:
+    if result == "lead_not_found":
+
         raise HTTPException(
-            status_code=404,
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+            ),
             detail="Lead not found",
+        )
+
+    if result == "active_opportunity_exists":
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_409_CONFLICT
+            ),
+            detail=(
+                "This lead already has "
+                "an active opportunity"
+            ),
+        )
+
+    if result != "success":
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            ),
+            detail=(
+                "Opportunity creation failed"
+            ),
         )
 
     return new_opportunity
 
+
+# ============================================================
+# GET ALL OPPORTUNITIES
+# ============================================================
 
 @router.get(
     "/",
@@ -65,8 +110,11 @@ def create_new_opportunity(
 )
 def read_all_opportunities(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
+
     if current_user.role in [
         Roles.ADMIN,
         Roles.MANAGER,
@@ -79,6 +127,12 @@ def read_all_opportunities(
     )
 
 
+# ============================================================
+# GET OPPORTUNITIES BY LEAD
+#
+# Keep this static route before /{opportunity_id}
+# ============================================================
+
 @router.get(
     "/lead/{lead_id}",
     response_model=list[OpportunityResponse],
@@ -86,13 +140,20 @@ def read_all_opportunities(
 def read_opportunities_by_lead(
     lead_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
+
     return get_opportunities_by_lead(
         db,
         lead_id,
     )
 
+
+# ============================================================
+# GET ONE OPPORTUNITY
+# ============================================================
 
 @router.get(
     "/{opportunity_id}",
@@ -101,21 +162,31 @@ def read_opportunities_by_lead(
 def read_opportunity(
     opportunity_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
+
     opportunity = get_opportunity(
         db,
         opportunity_id,
     )
 
     if not opportunity:
+
         raise HTTPException(
-            status_code=404,
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+            ),
             detail="Opportunity not found",
         )
 
     return opportunity
 
+
+# ============================================================
+# UPDATE OPPORTUNITY
+# ============================================================
 
 @router.put(
     "/{opportunity_id}",
@@ -132,6 +203,7 @@ def edit_opportunity(
         ])
     ),
 ):
+
     updated = update_opportunity(
         db,
         opportunity_id,
@@ -139,13 +211,20 @@ def edit_opportunity(
     )
 
     if not updated:
+
         raise HTTPException(
-            status_code=404,
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+            ),
             detail="Opportunity not found",
         )
 
     return updated
 
+
+# ============================================================
+# DELETE OPPORTUNITY
+# ============================================================
 
 @router.delete(
     "/{opportunity_id}",
@@ -159,17 +238,23 @@ def remove_opportunity(
         ])
     ),
 ):
+
     deleted = delete_opportunity(
         db,
         opportunity_id,
     )
 
     if not deleted:
+
         raise HTTPException(
-            status_code=404,
+            status_code=(
+                status.HTTP_404_NOT_FOUND
+            ),
             detail="Opportunity not found",
         )
 
     return {
-        "message": "Opportunity deleted successfully"
+        "message": (
+            "Opportunity deleted successfully"
+        )
     }
