@@ -30,21 +30,43 @@ class Task(Base):
         nullable=True,
     )
 
-    title = Column(String, nullable=False)
+    assigned_to = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+
+    title = Column(
+        String,
+        nullable=False,
+    )
 
     description = Column(String)
 
     due_date = Column(DateTime)
 
-    priority = Column(String, default="Medium")
+    priority = Column(
+        String,
+        default="Medium",
+    )
 
-    status = Column(String, default="Pending")
+    status = Column(
+        String,
+        default="Pending",
+    )
 
     created_at = Column(
         DateTime,
         default=datetime.utcnow,
     )
 
+    completed_at = Column(
+        DateTime,
+        nullable=True,
+    )
+
     lead = relationship("Lead")
 
     contact = relationship("Contact")
+
+    assigned_user = relationship("User")

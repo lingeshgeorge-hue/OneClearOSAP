@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 class TaskBase(BaseModel):
     lead_id: int
     contact_id: Optional[int] = None
+    assigned_to: Optional[int] = None
 
     title: str
     description: Optional[str] = None
@@ -23,16 +24,24 @@ class TaskCreate(TaskBase):
 
 
 class TaskUpdate(BaseModel):
+    lead_id: Optional[int] = None
+    contact_id: Optional[int] = None
+    assigned_to: Optional[int] = None
+
     title: Optional[str] = None
     description: Optional[str] = None
+
     due_date: Optional[datetime] = None
+
     priority: Optional[str] = None
     status: Optional[str] = None
-    contact_id: Optional[int] = None
 
 
 class TaskResponse(TaskBase):
     id: int
     created_at: datetime
+    completed_at: Optional[datetime] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True
+    )
