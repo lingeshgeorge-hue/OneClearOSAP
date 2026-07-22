@@ -9,6 +9,8 @@ from app.models.opportunity import Opportunity
 from app.models.proposal import Proposal
 from app.models.client import Client
 
+from app.crud.activity import get_user_activity_summary
+
 
 def get_dashboard_data(db: Session):
     """
@@ -891,6 +893,15 @@ def get_user_dashboard_data(
     )
 
     # ========================================================
+    # ACTIVITY PERFORMANCE
+    # ========================================================
+
+    activity_summary = get_user_activity_summary(
+        db,
+        user_id,
+    )
+
+    # ========================================================
     # RESPONSE
     # ========================================================
 
@@ -985,6 +996,15 @@ def get_user_dashboard_data(
             ),
         },
 
+        "activities": {
+            "total": activity_summary["total"],
+            "calls": activity_summary["calls"],
+            "emails": activity_summary["emails"],
+            "meetings": activity_summary["meetings"],
+            "follow_ups": activity_summary["follow_ups"],
+            "other": activity_summary["other"],
+        },
+
         "performance": {
             "leads_assigned": total_leads,
             "leads_contacted": (
@@ -1005,6 +1025,21 @@ def get_user_dashboard_data(
             "task_completion_rate": round(
                 task_completion_rate,
                 2,
+            ),
+            "total_activities": (
+                activity_summary["total"]
+            ),
+            "calls_made": (
+                activity_summary["calls"]
+            ),
+            "emails_sent": (
+                activity_summary["emails"]
+            ),
+            "meetings_completed": (
+                activity_summary["meetings"]
+            ),
+            "follow_ups_completed": (
+                activity_summary["follow_ups"]
             ),
         },
     }
