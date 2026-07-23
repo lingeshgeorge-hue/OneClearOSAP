@@ -79,22 +79,3 @@ def get_users(
         }
         for user in users
     ]
-
-@router.get("/")
-def get_users(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(
-        get_current_user
-    )
-):
-    users = db.query(User).all()
-
-    return [
-        {
-            "id": user.id,
-            "full_name": user.full_name,
-            "email": user.email,
-            "role": user.role,
-        }
-        for user in users
-    ]
